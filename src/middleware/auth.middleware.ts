@@ -1,21 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { config } from '../config';
-import { logger } from '../utils/logger';
+import dotenv from 'dotenv';
 
-// Extend Express Request interface to include user property
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        email: string;
-        role: string;
-        tenantId?: string;
-        permissions?: string[];
-      };
-    }
-  }
+// Initialize environment variables
+dotenv.config();
+
+// Create simple logger (replace with your actual logger implementation)
+const logger = {
+  error: (message: string, meta?: any) => console.error(message, meta),
+  warn: (message: string, meta?: any) => console.warn(message, meta),
+  info: (message: string, meta?: any) => console.info(message, meta),
+  debug: (message: string, meta?: any) => console.debug(message, meta),
+};
+
+// JWT configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-production';
+
+// JWT payload interface with both id and userId for flexibility
+interface JwtPayload {
+  userId?: string;
+  id?: string;
+  email?: string;
+  role: string;
+  tenantId?: string;
+  permissions?: string[];
 }
 
 /**
@@ -49,16 +57,16 @@ export const authMiddleware = async (
     
     // Verify token
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET) as {
-        id: string;
-        email: string;
-        role: string;
-        tenantId?: string;
-        permissions?: string[];
-      };
+      const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
       
-      // Attach user data to request
-      req.user = decoded;
+      // Attach user data to request with proper structure
+      req.user = {
+        userId: decoded.userId || decoded.id || '', // Use either userId or id
+        role: decoded.role,
+        email: decoded.email,
+        permissions: decoded.permissions,
+        tenantId: decoded.tenantId
+      };
       
       next();
     } catch (error) {
@@ -168,15 +176,16 @@ export const optionalAuthMiddleware = async (
     }
     
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET) as {
-        id: string;
-        email: string;
-        role: string;
-        tenantId?: string;
-        permissions?: string[];
-      };
+      const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
       
-      req.user = decoded;
+      // Attach user data to request with proper structure
+      req.user = {
+        userId: decoded.userId || decoded.id || '', // Use either userId or id
+        role: decoded.role,
+        email: decoded.email,
+        permissions: decoded.permissions,
+        tenantId: decoded.tenantId
+      };
     } catch (error) {
       // Ignore token errors for optional auth
       logger.debug('Invalid token in optional auth, continuing without user context');
