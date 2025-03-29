@@ -1,40 +1,75 @@
 import jwt from 'jsonwebtoken';
-import { config } from '../config/env'; // Your env/config setup
+import { config } from '../config';
 
-// Define a custom payload interface for our login token
-export interface JwtPayload {
-  userId: string;
+interface TokenPayload {
+  id: string;
+  email: string;
   role: string;
-  // Add additional claims as needed
+  tenantId?: string;
+  permissions?: string[];
 }
 
-// Default token expiration time (e.g., 1 hour)
-const TOKEN_EXPIRATION = '1h';
-
-/**
- * Generate a JWT login token for the given payload.
- * @param payload - Data to include in the token.
- * @param expiresIn - Optional custom expiration time.
- * @returns A signed JWT token.
- */
-export function generateLoginToken(payload: JwtPayload, expiresIn: string = TOKEN_EXPIRATION): string {
-  const secret = process.env.JWT_SECRET || config.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT secret is not defined');
-  }
-  return jwt.sign(payload, secret, { expiresIn });
+interface TokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
 }
 
 /**
- * Verify a given JWT token.
- * @param token - The JWT token to verify.
- * @returns The decoded payload if token is valid.
- * @throws Error if the token is invalid or expired.
+ * Generate access and refresh tokens for a user
  */
-export function verifyLoginToken(token: string): JwtPayload {
-  const secret = process.env.JWT_SECRET || config.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT secret is not defined');
+export const generateTokens = (payload: TokenPayload): TokenResponse => {
+  // Calculate expiration time in seconds
+  const accessTokenExpiresIn = getExpiryTime(config.JWT_EXPIRES_IN);
+  
+  // Generate access token
+  const accessToken = jwt.sign(payload, config.JWT_SECRET, {
+    expiresIn: config.JWT_EXPIRES_IN,
+  });
+  
+  // Generate refresh token
+  const refreshToken = jwt.sign(payload, config.JWT_REFRESH_SECRET, {
+    expiresIn: config.JWT_REFRESH_EXPIRES_IN,
+  });
+  
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: accessTokenExpiresIn,
+  };
+};
+
+/**
+ * Verify access token
+ */
+export const verifyAccessToken = (token: string): TokenPayload => {
+  return jwt.verify(token, config.JWT_SECRET) as TokenPayload;
+};
+
+/**
+ * Verify refresh token
+ */
+export const verifyRefreshToken = (token: string): TokenPayload => {
+  return jwt.verify(token, config.JWT_REFRESH_SECRET) as TokenPayload;
+};
+
+/**
+ * Helper function to convert JWT expiry time string to seconds
+ */
+const getExpiryTime = (expiresIn: string): number => {
+  const unit = expiresIn.charAt(expiresIn.length - 1);
+  const value = parseInt(expiresIn.slice(0, -1), 10);
+  
+  switch (unit) {
+    case 's':
+      return value;
+    case 'm':
+      return value * 60;
+    case 'h':
+      return value * 60 * 60;
+    case 'd':
+      return value * 24 * 60 * 60;
+    default:
+      return 3600; // Default to 1 hour
   }
-  return jwt.verify(token, secret) as JwtPayload;
-}
+};

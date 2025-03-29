@@ -1,20 +1,51 @@
-import { createConnection } from 'typeorm';
-import { config } from '../config/env'; // Adjust this import to your config setup
+import mongoose from 'mongoose';
+import { config } from '../config';
+import { logger } from '../utils/logger';
 
-export const connectDatabase = async () => {
+const options: mongoose.ConnectOptions = {
+  // No need to set useNewUrlParser, useUnifiedTopology, useFindAndModify, or useCreateIndex
+  // as they are now default in Mongoose 6+
+};
+
+/**
+ * Connect to MongoDB database
+ */
+export const connectToDatabase = async (): Promise<void> => {
   try {
-    const connection = await createConnection({
-      type: 'postgres',
-      url: process.env.DB_CONNECTION_STRING || config.DB_CONNECTION_STRING,
-      entities: [__dirname + '/../models/*.ts'],
-      // In production, disable automatic schema sync for safety
-      synchronize: process.env.NODE_ENV !== 'production',
-      logging: false,
+    await mongoose.connect(config.MONGODB_URI, options);
+    logger.info('MongoDB connected successfully');
+    
+    // Add event listeners
+    mongoose.connection.on('error', (err) => {
+      logger.error(`MongoDB connection error: ${err}`);
     });
-    console.log('Database connected');
-    return connection;
+    
+    mongoose.connection.on('disconnected', () => {
+      logger.warn('MongoDB disconnected');
+    });
+    
+    // Handle graceful shutdown
+    process.on('SIGINT', async () => {
+      await mongoose.connection.close();
+      logger.info('MongoDB connection closed due to app termination');
+      process.exit(0);
+    });
+    
   } catch (error) {
-    console.error('Database connection error:', error);
+    logger.error(`Error connecting to MongoDB: ${error}`);
+    throw error;
+  }
+};
+
+/**
+ * Disconnect from MongoDB database
+ */
+export const disconnectFromDatabase = async (): Promise<void> => {
+  try {
+    await mongoose.connection.close();
+    logger.info('MongoDB disconnected successfully');
+  } catch (error) {
+    logger.error(`Error disconnecting from MongoDB: ${error}`);
     throw error;
   }
 };
